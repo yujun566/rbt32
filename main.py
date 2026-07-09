@@ -1593,6 +1593,18 @@ class InventoryActionView(discord.ui.View):
         view = EnchantSelectView(self.cog, i.user.id, rows)
         await i.followup.send("💎 강화할 아이템을 선택하세요:", view=view, ephemeral=True)
 
+    @discord.ui.button(label="⚔️ 장착하기", style=discord.ButtonStyle.primary)
+    async def equip(self, i, b):
+        if i.user.id != self.uid: return
+        await i.response.defer(ephemeral=True)
+        rows = await fetch_all(
+            "SELECT * FROM inventory_items WHERE user_id=? AND item_type IN ('무기','방어구') LIMIT 10", (i.user.id,)
+        )
+        if not rows:
+            await i.followup.send("장착할 수 있는 장비가 없습니다.", ephemeral=True); return
+        view = EquipSelectView(self.cog, i.user.id, rows)
+        await i.followup.send("⚔️ 장착할 아이템을 선택하세요:", view=view, ephemeral=True)
+
     @discord.ui.button(label="🏪 거래소 등록", style=discord.ButtonStyle.secondary)
     async def list_item(self, i, b):
         if i.user.id != self.uid: return
@@ -1602,6 +1614,41 @@ class InventoryActionView(discord.ui.View):
             await i.followup.send("인벤토리가 비어있습니다.", ephemeral=True); return
         view = AuctionListView(self.cog, i.user.id, rows)
         await i.followup.send("🏪 거래소에 등록할 아이템을 선택하세요:", view=view, ephemeral=True)
+
+class EquipSelectView(discord.ui.View):
+    def __init__(self, cog, uid, rows):
+        super().__init__(timeout=60)
+        self.cog = cog; self.uid = uid
+        for row in rows:
+            btn = discord.ui.Button(label=row["item_name"][:20], style=discord.ButtonStyle.secondary)
+            btn.callback = self._make_cb(row)
+            self.add_item(btn)
+
+    def _make_cb(self, item_row):
+        async def cb(i: discord.Interaction):
+            if i.user.id != self.uid: return
+            await i.response.defer(ephemeral=True)
+            p = await ensure_player(i.user.id, i.user.display_name)
+            
+            # 장착 로직
+            slot = "weapon" if item_row["item_type"] == "무기" else "armor"
+            old_item_code = p.equipment.get(slot)
+            
+            # 스탯 차감 (기존 아이템)
+            if old_item_code:
+                old_item = ITEM_CATALOG.get(old_item_code)
+                if old_item:
+                    p.attack -= old_item.power
+                    p.defense -= old_item.defense
+            
+            # 새 아이템 장착 및 스탯 가산
+            p.equipment[slot] = item_row["item_code"]
+            p.attack += item_row["power"]
+            p.defense += item_row["defense"]
+            
+            await save_player(p)
+            await i.followup.send(f"✅ **{item_row['item_name']}** 장착 완료! (공격력/방어력 반영됨)", ephemeral=True)
+        return cb
 
 
 class EnchantSelectView(discord.ui.View):
