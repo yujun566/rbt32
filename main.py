@@ -644,7 +644,8 @@ def render_house_screen(p: PlayerRecord) -> str:
     lines.append("║     침대      TV      의자      ║")
     lines.append("║                                      ║")
     lines.append(f"╠══ ❤️{p.hp}/{p.max_hp} 💙{p.mp}/{p.max_mp} ⚡{p.stamina}/{p.max_stamina} ══╣")
-    lines.append("╚══════════════════════════════════════╝", "```"]
+    lines.append("╚══════════════════════════════════════╝")
+    lines.append("```")
     return "\n".join(lines)
 
 def render_raid_screen(p: PlayerRecord) -> str:
@@ -655,7 +656,8 @@ def render_raid_screen(p: PlayerRecord) -> str:
     lines.append("║          ⚔️⚔️⚔️⚔️⚔️⚔️⚔️⚔️            ║")
     lines.append("║                                      ║")
     lines.append(f"╠══ ❤️{p.hp}/{p.max_hp} 💙{p.mp}/{p.max_mp} ⚡{p.stamina}/{p.max_stamina} ══╣")
-    lines.append("╚══════════════════════════════════════╝", "```"]
+    lines.append("╚══════════════════════════════════════╝")
+    lines.append("```")
     return "\n".join(lines)
 
 def render_minimap(p: PlayerRecord) -> str:
