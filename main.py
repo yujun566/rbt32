@@ -640,7 +640,7 @@ def render_house_screen(p: PlayerRecord) -> str:
     lines.append("║     침대      TV      의자      ║")
     lines.append("║                                      ║")
     lines.append(f"╠══ ❤️{p.hp}/{p.max_hp} 💙{p.mp}/{p.max_mp} ⚡{p.stamina}/{p.max_stamina} ══╣")
-    lines.append("╚══════════════════════════════════════╝", "```")
+    lines.append("╚══════════════════════════════════════╝", "```"]
     return "\n".join(lines)
 
 def render_raid_screen(p: PlayerRecord) -> str:
@@ -651,7 +651,7 @@ def render_raid_screen(p: PlayerRecord) -> str:
     lines.append("║          ⚔️⚔️⚔️⚔️⚔️⚔️⚔️⚔️            ║")
     lines.append("║                                      ║")
     lines.append(f"╠══ ❤️{p.hp}/{p.max_hp} 💙{p.mp}/{p.max_mp} ⚡{p.stamina}/{p.max_stamina} ══╣")
-    lines.append("╚══════════════════════════════════════╝", "```")
+    lines.append("╚══════════════════════════════════════╝", "```"]
     return "\n".join(lines)
 
 def render_minimap(p: PlayerRecord) -> str:
@@ -1294,17 +1294,17 @@ class RPGMainView(discord.ui.View):
                 view = NPCView(self.cog, p.user_id, npc_key, npc)
                 await i.followup.send(f"💬 **{npc['name']}**: {npc['dialogue']}", view=view, ephemeral=True)
                 return
-    # 집 체크
-    ok, msg = await enter_house(p)
-    if ok:
-        if "입장" in msg:
-            p.state["in_house"] = True
-            await save_player(p)
-            await i.edit_original_response(content=render_map(p))
-        view = HouseView(self.cog, p.user_id)
-        await i.followup.send(msg, view=view, ephemeral=True)
-    else:
-        await i.followup.send(msg, ephemeral=True)
+        # 집 체크
+        ok, msg = await enter_house(p)
+        if ok:
+            if "입장" in msg:
+                p.state["in_house"] = True
+                await save_player(p)
+                await i.edit_original_response(content=render_map(p))
+            view = HouseView(self.cog, p.user_id)
+            await i.followup.send(msg, view=view, ephemeral=True)
+        else:
+            await i.followup.send(msg, ephemeral=True)
 
     @discord.ui.button(label="⚔️ 전투", style=discord.ButtonStyle.danger, row=2, custom_id="battle")
     async def battle(self, i, b):
@@ -2547,7 +2547,7 @@ class RPGCog(commands.Cog):
         return uid in settings.dev_ids
 
     @app_commands.command(name="dev_give_item", description="[DEV] 아이템 지급")
-    async def dev_give_item(self, i: discord.Interaction, 유저: discord.Member, 아이템코드: str, 수량: int = 1):
+    async def dev_give_item(self, i: discord.Interaction, 유저: discord.User, 아이템코드: str, 수량: int = 1):
         if not self._is_dev(i.user.id):
             await i.response.send_message("❌ 개발자 전용 명령어입니다.", ephemeral=True); return
         await i.response.defer(ephemeral=True)
@@ -2570,7 +2570,7 @@ class RPGCog(commands.Cog):
             await i.followup.send(f"❌ 아이템 지급 실패.", ephemeral=True)
 
     @app_commands.command(name="dev_give_coin", description="[DEV] 코인 지급")
-    async def dev_give_coin(self, i: discord.Interaction, 유저: discord.Member, 코인: int):
+    async def dev_give_coin(self, i: discord.Interaction, 유저: discord.User, 코인: int):
         if not self._is_dev(i.user.id):
             await i.response.send_message("❌ 개발자 전용 명령어입니다.", ephemeral=True); return
         await i.response.defer(ephemeral=True)
@@ -2578,7 +2578,7 @@ class RPGCog(commands.Cog):
         await i.followup.send(f"✅ {유저.display_name}에게 💰{코인:,}코인 지급 완료.", ephemeral=True)
 
     @app_commands.command(name="dev_give_gem", description="[DEV] 젬 지급")
-    async def dev_give_gem(self, i: discord.Interaction, 유저: discord.Member, 젬: int):
+    async def dev_give_gem(self, i: discord.Interaction, 유저: discord.User, 젬: int):
         if not self._is_dev(i.user.id):
             await i.response.send_message("❌ 개발자 전용 명령어입니다.", ephemeral=True); return
         await i.response.defer(ephemeral=True)
