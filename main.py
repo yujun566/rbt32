@@ -241,6 +241,15 @@ async def init_db():
                 level INTEGER DEFAULT 0,
                 exp INTEGER DEFAULT 0
             );
+            CREATE TABLE IF NOT EXISTS global_chat_channels (
+                guild_id TEXT PRIMARY KEY,
+                channel_id TEXT
+            );
+            CREATE TABLE IF NOT EXISTS player_settings (
+                user_id INTEGER PRIMARY KEY,
+                auto_refresh INTEGER DEFAULT 0,
+                theme TEXT DEFAULT 'default'
+            );
         """)
         await db.commit()
 
@@ -565,7 +574,7 @@ async def add_item(uid: int, item_code: str, qty: int = 1):
 # 10. 월드 렌더링 (미니맵 포함)
 # ══════════════════════════════════════════════════════════════════════════
 BIOME_TILES = {
-    "평원": "🌱", "숲": "🌲", "사막": "🏜️", "설원": "❄️",
+    "평원": "🟫", "숲": "🌲", "사막": "🏜️", "설원": "❄️",
     "화산": "🌋", "바다": "🌊", "동굴": "🕳️",
 }
 
@@ -591,7 +600,7 @@ def _get_tile(x: int, y: int, px: int, py: int) -> str:
     # 집 체크
     biome = _get_biome(x, y)
     if (x + y) % 23 == 0: return "🏠"
-    return BIOME_TILES.get(biome, "🌱")
+    return BIOME_TILES.get(biome, "🟫")
 
 def render_map(p: PlayerRecord, view_dist: int = 4) -> str:
     lines = ["```"]
@@ -1166,6 +1175,26 @@ class RPGMainView(discord.ui.View):
         super().__init__(timeout=None)
         self.cog = cog
         self.uid = uid
+        self.refresh_task = None
+
+    async def start_refresh(self, interaction: discord.Interaction):
+        row = await fetch_one("SELECT auto_refresh FROM player_settings WHERE user_id=?", (self.uid,))
+        if row and row["auto_refresh"]:
+            if self.refresh_task is None:
+                self.refresh_task = self.bot_refresh.start(interaction)
+
+    @tasks.loop(seconds=5)
+    async def bot_refresh(self, interaction: discord.Interaction):
+        try:
+            p = await ensure_player(self.uid, interaction.user.display_name)
+            content = render_map(p)
+            await interaction.edit_original_response(content=content, view=self)
+        except:
+            self.bot_refresh.stop()
+
+    def stop_refresh(self):
+        if self.refresh_task:
+            self.bot_refresh.stop()
 
     async def _check(self, i: discord.Interaction) -> bool:
         if i.user.id != self.uid:
@@ -1301,6 +1330,94 @@ class RPGMainView(discord.ui.View):
         await i.response.defer(ephemeral=True)
         view = HelpView()
         await i.followup.send("❓ **도움말** - 카테고리를 선택하세요:", view=view, ephemeral=True)
+
+    @discord.ui.button(label="⚙️ 설정", style=discord.ButtonStyle.secondary, row=4, custom_id="settings")
+    async def settings(self, i, b):
+        if not await self._check(i): return
+        view = SettingsView(self.uid)
+        await i.response.send_message("⚙️ **개인 설정**", view=view, ephemeral=True)
+
+    @discord.ui.button(label="🐲 레이드", style=discord.ButtonStyle.danger, row=4, custom_id="raid_menu")
+    async def raid_menu(self, i, b):
+        if not await self._check(i): return
+        await i.response.defer(ephemeral=True)
+        raid_id = await create_raid(random.randint(0, len(BOSSES)-1))
+        boss = BOSSES[0]
+        view = RaidView(self.cog, i.user.id, raid_id)
+        await i.followup.send(
+            f"🐲 **레이드 보스 등장!**\n보스: {boss['name']}\nHP: {boss['hp']:,}\n"
+            f"레이드 ID: `{raid_id}`\n아래 버튼으로 참가 및 공격하세요!",
+            view=view, ephemeral=True
+        )
+
+    @discord.ui.button(label="🤝 소셜", style=discord.ButtonStyle.success, row=4, custom_id="social_menu")
+    async def social_menu(self, i, b):
+        if not await self._check(i): return
+        view = SocialMenuView(self.cog, self.uid)
+        await i.response.send_message("🤝 **소셜 메뉴**", view=view, ephemeral=True)
+
+class SocialMenuView(discord.ui.View):
+    def __init__(self, cog, uid):
+        super().__init__(timeout=60)
+        self.cog = cog; self.uid = uid
+
+    @discord.ui.button(label="💍 결혼 제안", style=discord.ButtonStyle.primary)
+    async def marry(self, i, b):
+        await i.response.send_message("결혼하고 싶은 유저를 멘션하여 `/결혼제안 @유저` 명령어를 사용해주세요.", ephemeral=True)
+
+    @discord.ui.button(label="🤝 의형제 제안", style=discord.ButtonStyle.primary)
+    async def brotherhood(self, i, b):
+        await i.response.send_message("의형제를 맺고 싶은 유저를 멘션하여 `/의형제 @유저` 명령어를 사용해주세요.", ephemeral=True)
+
+    @discord.ui.button(label="👋 인사", style=discord.ButtonStyle.secondary)
+    async def wave(self, i, b):
+        p = await ensure_player(self.uid, i.user.display_name)
+        await i.response.send_message(f"👋 **{p.username}**이(가) 인사를 합니다!")
+
+    @discord.ui.button(label="💃 춤", style=discord.ButtonStyle.secondary)
+    async def dance(self, i, b):
+        p = await ensure_player(self.uid, i.user.display_name)
+        await i.response.send_message(f"💃 **{p.username}**이(가) 신나게 춤을 춥니다!")
+
+    @discord.ui.button(label="🏆 랭킹", style=discord.ButtonStyle.secondary)
+    async def ranking(self, i, b):
+        await i.response.defer(ephemeral=True)
+        rows = await fetch_all("SELECT username,level,coins FROM players ORDER BY level DESC, coins DESC LIMIT 10")
+        lines = ["**🏆 글로벌 랭킹 (레벨 기준)**"]
+        for idx, r in enumerate(rows, 1):
+            lines.append(f"{idx}. **{r['username']}** | Lv.{r['level']} | 💰{r['coins']:,}")
+        await i.followup.send("\n".join(lines), ephemeral=True)
+
+    @discord.ui.button(label="🎟️ 초대", style=discord.ButtonStyle.secondary)
+    async def invite(self, i, b):
+        await i.response.defer(ephemeral=True)
+        p = await ensure_player(self.uid, i.user.display_name)
+        if not p.invite_code:
+            p.invite_code = uuid.uuid4().hex[:8].upper()
+            await save_player(p)
+        invited_count = await fetch_one("SELECT COUNT(*) as cnt FROM players WHERE invited_by=?", (p.user_id,))
+        cnt = invited_count["cnt"] if invited_count else 0
+        await i.followup.send(
+            f"**🎟️ 초대 코드: `{p.invite_code}`**\n"
+            f"초대한 친구 수: {cnt}명\n"
+            f"초대 보상: 친구 1명당 💰500코인 + 💎5젬\n"
+            f"친구가 `/초대등록 {p.invite_code}`를 입력하면 보상이 지급됩니다!",
+            ephemeral=True
+        )
+
+class SettingsView(discord.ui.View):
+    def __init__(self, uid):
+        super().__init__(timeout=60)
+        self.uid = uid
+
+    @discord.ui.button(label="🔄 자동 새로고침 ON/OFF", style=discord.ButtonStyle.primary)
+    async def toggle_refresh(self, i, b):
+        row = await fetch_one("SELECT auto_refresh FROM player_settings WHERE user_id=?", (self.uid,))
+        current = row["auto_refresh"] if row else 0
+        new_val = 1 if current == 0 else 0
+        await execute("INSERT OR REPLACE INTO player_settings (user_id, auto_refresh) VALUES (?,?)", (self.uid, new_val))
+        status = "ON" if new_val else "OFF"
+        await i.response.send_message(f"✅ 자동 새로고침이 **{status}** 되었습니다. (게임 재시작 시 적용)", ephemeral=True)
 
 
 class BattleSelectView(discord.ui.View):
@@ -2135,6 +2252,54 @@ class RPGCog(commands.Cog):
         self._active_raids: Dict[str, str] = {}  # guild_id -> raid_id
         self._quiz_active: Dict[str, dict] = {}  # channel_id -> quiz
 
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        if message.author.bot: return
+        # 글로벌 채팅 처리
+        row = await fetch_one("SELECT channel_id FROM global_chat_channels WHERE guild_id=?", (str(message.guild.id) if message.guild else "DM",))
+        if row and str(message.channel.id) == row["channel_id"]:
+            await self.broadcast_global_chat(message)
+        
+        # 퀴즈 정답 체크 (기존 로직 유지 가능 시)
+        ch_id = str(message.channel.id)
+        if ch_id in self._quiz_active:
+            q = self._quiz_active[ch_id]
+            if message.author.id not in q["answered"] and message.content.strip() == q["answer"]:
+                q["answered"].add(message.author.id)
+                p = await ensure_player(message.author.id, message.author.display_name)
+                p.coins += q["reward"]
+                await save_player(p)
+                await message.reply(f"🎉 정답입니다! 💰{q['reward']:,}코인을 획득했습니다!")
+
+    async def broadcast_global_chat(self, message: discord.Message):
+        rows = await fetch_all("SELECT guild_id, channel_id FROM global_chat_channels")
+        p = await ensure_player(message.author.id, message.author.display_name)
+        title_str = f"[{p.title}] " if p.title else ""
+        embed = discord.Embed(
+            description=message.content,
+            color=discord.Color.blue(),
+            timestamp=datetime.now()
+        )
+        embed.set_author(name=f"{title_str}{p.username} (Lv.{p.level})", icon_url=message.author.display_avatar.url)
+        embed.set_footer(text=f"서버: {message.guild.name if message.guild else 'DM'}")
+
+        for r in rows:
+            if r["channel_id"] == str(message.channel.id): continue # 보낸 채널 제외
+            target_ch = self.bot.get_channel(int(r["channel_id"]))
+            if target_ch:
+                try:
+                    await target_ch.send(embed=embed)
+                except:
+                    pass
+
+    @app_commands.command(name="글로벌채팅설정", description="(관리자) 현재 채널을 글로벌 채팅 채널로 설정")
+    @app_commands.default_permissions(administrator=True)
+    async def set_global_chat(self, i: discord.Interaction):
+        await i.response.defer(ephemeral=True)
+        await execute("INSERT OR REPLACE INTO global_chat_channels (guild_id, channel_id) VALUES (?,?)",
+                      (str(i.guild_id) if i.guild_id else "DM", str(i.channel_id)))
+        await i.followup.send("✅ 이 채널이 글로벌 채팅 채널로 설정되었습니다!", ephemeral=True)
+
     # ── 진입점 ──
     @app_commands.command(name="rpg", description="RPG 게임 시작")
     async def rpg(self, i: discord.Interaction):
@@ -2153,7 +2318,8 @@ class RPGCog(commands.Cog):
             )
         content = render_map(p)
         view = RPGMainView(self, p.user_id)
-        await i.followup.send(content, view=view)
+        msg = await i.followup.send(content, view=view)
+        await view.start_refresh(i)
 
     @app_commands.command(name="랭킹", description="랭킹 확인")
     async def ranking(self, i: discord.Interaction):
