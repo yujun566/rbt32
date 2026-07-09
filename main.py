@@ -309,20 +309,24 @@ def _build_items():
         ("craft_dragon_armor","🐉 드래곤 갑옷","방어구","전설",0,400,{"element":"dragon"}),
         ("craft_shadow_cloak","🌑 그림자 망토","방어구","신화",0,600,{"element":"dark"}),
         ("craft_holy_shield","✨ 성스러운 방패","방어구","신화",50,700,{"element":"holy"}),
+        ("dev_god_armor","👑 신의 갑옷","방어구","초월",0,9999999,{"dev":True, "hp_inf":True}),
     ]
     for c in craft_items:
         ITEM_CATALOG[c[0]] = Item(c[0],c[1],c[2],c[3],c[4],c[5],c[6])
 
 _build_items()
 
-# 제작 레시피
+# 제작 레시피 (전체 아이템 제작법)
 CRAFT_RECIPES = {
-    "craft_fire_sword": {"재료": {"mat_철":5,"mat_드래곤하트":2}, "코인":5000},
-    "craft_ice_bow":    {"재료": {"mat_미스릴":5,"mat_마나수정":3}, "코인":5000},
-    "craft_thunder_staff":{"재료": {"mat_오리할콘":5,"mat_마나수정":5}, "코인":10000},
-    "craft_dragon_armor":{"재료": {"mat_드래곤하트":8,"mat_오리할콘":5}, "코인":15000},
-    "craft_shadow_cloak":{"재료": {"mat_고대유물":5,"mat_드래곤하트":5}, "코인":20000},
-    "craft_holy_shield": {"재료": {"mat_고대유물":8,"mat_마나수정":8}, "코인":25000},
+    "craft_fire_sword": {"재료": {"mat_철":10, "mat_드래곤하트":2}, "코인":5000},
+    "craft_ice_bow":    {"재료": {"mat_미스릴":10, "mat_마나수정":3}, "코인":5000},
+    "craft_thunder_staff":{"재료": {"mat_오리할콘":10, "mat_마나수정":5}, "코인":10000},
+    "craft_dragon_armor":{"재료": {"mat_드래곤하트":10, "mat_철":20}, "코인":15000},
+    "craft_shadow_cloak":{"재료": {"mat_고대유물":10, "mat_미스릴":15}, "코인":20000},
+    "craft_holy_shield": {"재료": {"mat_마나수정":20, "mat_오리할콘":10}, "코인":25000},
+    "potion_hp_m":      {"재료": {"mat_나무":5, "mat_돌":5}, "코인":500},
+    "potion_hp_l":      {"재료": {"mat_철":5, "mat_금":2}, "코인":2000},
+    "fishing_rod_gold": {"재료": {"mat_금":10, "mat_다이아몬드":2}, "코인":10000},
 }
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -603,6 +607,13 @@ def _get_tile(x: int, y: int, px: int, py: int) -> str:
     return BIOME_TILES.get(biome, "🟫")
 
 def render_map(p: PlayerRecord, view_dist: int = 4) -> str:
+    # 레이드 중이면 레이드 화면 출력
+    if p.state.get("in_raid"):
+        return render_raid_screen(p)
+    # 집에 있으면 집 화면 출력
+    if p.state.get("in_house"):
+        return render_house_screen(p)
+
     lines = ["```"]
     title_str = f"[{p.title}] " if p.title else ""
     lines.append(f"╔══ {title_str}{p.username} | Lv.{p.level} {p.job} ══╗")
@@ -619,6 +630,28 @@ def render_map(p: PlayerRecord, view_dist: int = 4) -> str:
     lines.append(f"║ 💰{p.coins:,}  💎{p.gems}  ⚔️{p.attack}  🛡️{p.defense}  🎯{p.crit}% ║")
     lines.append("╚══════════════════════════════════════╝")
     lines.append("```")
+    return "\n".join(lines)
+
+def render_house_screen(p: PlayerRecord) -> str:
+    lines = ["```", "╔════════════ 🏠 내 집 ════════════╗"]
+    lines.append(f"║ 플레이어: {p.username}의 아늑한 보금자리  ║")
+    lines.append("║                                      ║")
+    lines.append("║      🛏️        📺        🪑      ║")
+    lines.append("║     침대      TV      의자      ║")
+    lines.append("║                                      ║")
+    lines.append(f"╠══ ❤️{p.hp}/{p.max_hp} 💙{p.mp}/{p.max_mp} ⚡{p.stamina}/{p.max_stamina} ══╣")
+    lines.append("╚══════════════════════════════════════╝", "```")
+    return "\n".join(lines)
+
+def render_raid_screen(p: PlayerRecord) -> str:
+    lines = ["```", "╔════════════ 🐲 레이드 ════════════╗"]
+    lines.append(f"║      🔥 전장의 한복판! 🔥          ║")
+    lines.append("║                                      ║")
+    lines.append("║          🐲 거대 보스 🐲            ║")
+    lines.append("║          ⚔️⚔️⚔️⚔️⚔️⚔️⚔️⚔️            ║")
+    lines.append("║                                      ║")
+    lines.append(f"╠══ ❤️{p.hp}/{p.max_hp} 💙{p.mp}/{p.max_mp} ⚡{p.stamina}/{p.max_stamina} ══╣")
+    lines.append("╚══════════════════════════════════════╝", "```")
     return "\n".join(lines)
 
 def render_minimap(p: PlayerRecord) -> str:
@@ -1261,13 +1294,17 @@ class RPGMainView(discord.ui.View):
                 view = NPCView(self.cog, p.user_id, npc_key, npc)
                 await i.followup.send(f"💬 **{npc['name']}**: {npc['dialogue']}", view=view, ephemeral=True)
                 return
-        # 집 체크
-        ok, msg = await enter_house(p)
-        if ok:
-            view = HouseView(self.cog, p.user_id)
-            await i.followup.send(msg, view=view, ephemeral=True)
-        else:
-            await i.followup.send(msg, ephemeral=True)
+    # 집 체크
+    ok, msg = await enter_house(p)
+    if ok:
+        if "입장" in msg:
+            p.state["in_house"] = True
+            await save_player(p)
+            await i.edit_original_response(content=render_map(p))
+        view = HouseView(self.cog, p.user_id)
+        await i.followup.send(msg, view=view, ephemeral=True)
+    else:
+        await i.followup.send(msg, ephemeral=True)
 
     @discord.ui.button(label="⚔️ 전투", style=discord.ButtonStyle.danger, row=2, custom_id="battle")
     async def battle(self, i, b):
@@ -1925,6 +1962,15 @@ class HouseView(discord.ui.View):
         ok, msg = await rest_at_home(p)
         await i.followup.send(msg, ephemeral=True)
 
+    @discord.ui.button(label="🚪 집 나가기", style=discord.ButtonStyle.secondary)
+    async def leave(self, i, b):
+        if i.user.id != self.uid: return
+        await i.response.defer(ephemeral=True)
+        p = await ensure_player(i.user.id, i.user.display_name)
+        p.state["in_house"] = False
+        await save_player(p)
+        await i.followup.send("집에서 나왔습니다.", ephemeral=True)
+
 
 class GuildView(discord.ui.View):
     def __init__(self, cog, uid):
@@ -2135,10 +2181,35 @@ class AuctionView(discord.ui.View):
         view = AuctionBidView(self.cog, i.user.id, rows)
         await i.followup.send("\n".join(lines), view=view, ephemeral=True)
 
+    @discord.ui.button(label="📦 내 아이템 등록", style=discord.ButtonStyle.success)
+    async def sell_item(self, i, b):
+        if i.user.id != self.uid: return
+        await i.response.defer(ephemeral=True)
+        rows = await fetch_all("SELECT * FROM inventory_items WHERE user_id=? LIMIT 10", (i.user.id,))
+        if not rows:
+            await i.followup.send("등록할 아이템이 없습니다.", ephemeral=True); return
+        view = AuctionSellListView(self.cog, i.user.id, rows)
+        await i.followup.send("📦 거래소에 등록할 아이템을 선택하세요:", view=view, ephemeral=True)
+
     @discord.ui.button(label="🔔 알림 설정", style=discord.ButtonStyle.secondary)
     async def watch(self, i, b):
         if i.user.id != self.uid: return
         await i.response.send_modal(AuctionWatchModal(i.user.id))
+
+class AuctionSellListView(discord.ui.View):
+    def __init__(self, cog, uid, rows):
+        super().__init__(timeout=60)
+        self.cog = cog; self.uid = uid
+        for row in rows:
+            btn = discord.ui.Button(label=row["item_name"][:20], style=discord.ButtonStyle.secondary)
+            btn.callback = self._make_cb(row["id"])
+            self.add_item(btn)
+
+    def _make_cb(self, inv_id):
+        async def cb(i: discord.Interaction):
+            if i.user.id != self.uid: return
+            await i.response.send_modal(AuctionPriceModal(self.uid, inv_id))
+        return cb
 
 
 class AuctionBidView(discord.ui.View):
@@ -2480,12 +2551,23 @@ class RPGCog(commands.Cog):
         if not self._is_dev(i.user.id):
             await i.response.send_message("❌ 개발자 전용 명령어입니다.", ephemeral=True); return
         await i.response.defer(ephemeral=True)
+        # 아이템 존재 여부 먼저 확인
+        item = ITEM_CATALOG.get(아이템코드)
+        if not item:
+            # 부분 일치 검색 시도
+            matches = [code for code, it in ITEM_CATALOG.items() if 아이템코드.lower() in it.name.lower()]
+            if matches:
+                아이템코드 = matches[0]
+                item = ITEM_CATALOG[아이템코드]
+            else:
+                await i.followup.send(f"❌ 아이템 '{아이템코드}'를 찾을 수 없습니다.", ephemeral=True)
+                return
+
         ok = await add_item(유저.id, 아이템코드, 수량)
         if ok:
-            item = ITEM_CATALOG.get(아이템코드)
-            await i.followup.send(f"✅ {유저.display_name}에게 **{item.name if item else 아이템코드}** x{수량} 지급 완료.", ephemeral=True)
+            await i.followup.send(f"✅ {유저.display_name}에게 **{item.name}** (`{아이템코드}`) x{수량} 지급 완료.", ephemeral=True)
         else:
-            await i.followup.send(f"❌ 아이템 코드 '{아이템코드}'를 찾을 수 없습니다.", ephemeral=True)
+            await i.followup.send(f"❌ 아이템 지급 실패.", ephemeral=True)
 
     @app_commands.command(name="dev_give_coin", description="[DEV] 코인 지급")
     async def dev_give_coin(self, i: discord.Interaction, 유저: discord.Member, 코인: int):
