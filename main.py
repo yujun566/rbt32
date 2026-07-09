@@ -497,28 +497,30 @@ class PlayerRecord:
 
     @classmethod
     def from_row(cls, r):
+        # r이 dict가 아닐 경우 처리 (Row 객체 대응)
+        d = dict(r) if not isinstance(r, dict) else r
         return cls(
-            user_id=r["user_id"], username=r["username"], guild_id=r["guild_id"],
-            job=r["job"], title=r["title"] or "",
-            x=r["x"], y=r["y"], hp=r["hp"], max_hp=r["max_hp"],
-            mp=r["mp"], max_mp=r["max_mp"],
-            stamina=r["stamina"], max_stamina=r["max_stamina"],
-            level=r["level"], exp=r["exp"],
-            coins=r["coins"], gems=r["gems"],
-            attack=r["attack"], defense=r["defense"], crit=r["crit"],
-            facing=r["facing"], biome=r["biome"],
-            equipment=uj(r["equipment_json"]),
-            state=uj(r["state_json"]),
-            appearance=uj(r["appearance_json"]),
-            achievements=uj(r["achievements_json"]) if r["achievements_json"] else [],
-            tutorial_step=r["tutorial_step"] or 0,
-            season_bp_level=r["season_bp_level"] or 0,
-            season_bp_exp=r["season_bp_exp"] or 0,
-            partner_id=r["partner_id"] or 0,
-            brother_id=r["brother_id"] or 0,
-            invite_code=r["invite_code"] or "",
-            invited_by=r["invited_by"] or 0,
-            voice_bonus_until=r["voice_bonus_until"] or "",
+            user_id=d["user_id"], username=d["username"], guild_id=d.get("guild_id"),
+            job=d["job"], title=d["title"] or "",
+            x=d["x"], y=d["y"], hp=d["hp"], max_hp=d["max_hp"],
+            mp=d["mp"], max_mp=d["max_mp"],
+            stamina=d["stamina"], max_stamina=d["max_stamina"],
+            level=d["level"], exp=d["exp"],
+            coins=d["coins"], gems=d["gems"],
+            attack=d["attack"], defense=d["defense"], crit=d["crit"],
+            facing=d["facing"], biome=d["biome"],
+            equipment=uj(d.get("equipment_json", "{}")),
+            state=uj(d.get("state_json", "{}")),
+            appearance=uj(d.get("appearance_json", "{}")),
+            achievements=uj(d.get("achievements_json", "[]")) if d.get("achievements_json") else [],
+            tutorial_step=d.get("tutorial_step") or 0,
+            season_bp_level=d.get("season_bp_level") or 0,
+            season_bp_exp=d.get("season_bp_exp") or 0,
+            partner_id=d.get("partner_id") or 0,
+            brother_id=d.get("brother_id") or 0,
+            invite_code=d.get("invite_code") or "",
+            invited_by=d.get("invited_by") or 0,
+            voice_bonus_until=d.get("voice_bonus_until") or ""
         )
 
 async def save_player(p: PlayerRecord):
@@ -607,6 +609,8 @@ def _get_tile(x: int, y: int, px: int, py: int) -> str:
     return BIOME_TILES.get(biome, "🟫")
 
 def render_map(p: PlayerRecord, view_dist: int = 4) -> str:
+    # state가 dict가 아닐 경우 초기화
+    if not isinstance(p.state, dict): p.state = {}
     # 레이드 중이면 레이드 화면 출력
     if p.state.get("in_raid"):
         return render_raid_screen(p)
